@@ -1,0 +1,125 @@
+OUTLINE
+-------
+
+Article 1: Getting Started with Enterprise Real-Time Linux
+Authors: Darren Hart
+
+I am a little concerned that this first article is too dull, maybe we
+don't need it at all?  Perhaps we can include a technical howto on
+something very core to any rt programming - rt scheduling?
+
+o Introduction (minimal length, just state what were doing)
+  - Enterprise Real-Time definition
+    - examples of how it's being used today
+    - When do you need it (brief summary w/ references)
+  - Where can you get it
+o Scope definition
+  - C, C++, not Java
+  - Focus on SMP servers, rather than embedded platforms
+o Standards
+  - Relevant POSIX standards
+  - Linux PREEMPT_RT specific features, or implementation details
+o System Configuration
+  - PAM, ulimits (limits.conf, realtime.conf, etc.)
+  - kthread/softirq priorities
+  - SMIs
+  - Servicability
+    - rtssh
+    - rtwatchdog
+    - kdump
+    - systemtap
+    - oprofile
+
+
+Article 2: Time and timers
+Authors: John Stultz
+
+o clock sources and clock events (understanding your hardware)
+  - Using the clock_gettime() interface (responsibly)
+    - CLOCK_MONOTONIC (not CLOCK_REALTIME... oddly enough)
+    - why not gettimeofday()
+  - clock_nanosleep()
+  - itimers
+  (these last two overlap with scheduling a bit...)
+
+
+Article 3: Real-Time Scheduling
+Authors: Darren Hart, JV
+
+o Overview
+  - SCHED_FIFO vs SCHED_RR
+    - internals (behavior, sched_yield, queues)
+    - why SCHED_RR isn't really a good idea...
+  - Choosing your priorities
+﻿  - using prctl to be able to distinguish your threads from one another
+o Setting Priorities
+  - via chrt
+  - programatically
+    - for a single process
+    - using pthreads
+o Periodic Scheduling
+  - with itimers
+  - with clock_nanosleep plus delta calculation
+  - watch out for aligning periods
+o Leveraging CPU Pinning
+  - pros/cons
+   
+
+Article 4: Threading and IPC
+Authors: Sripathi
+o unix signals (why not to)
+o Locking
+  - pthread_mutex_t
+  - PI vs. PC (Darren has a few hundres words on this we can 
+               leverage on his blog)
+    - robust
+  - pthread_cond_t
+    - asynchronous event handling
+    - pitfall: use the same clock (CLOCK_MONOTONIC) for the 
+      timeout and the conditional creation
+o Barriers
+o POSIX message queues
+
+
+Article 5: Minimizing Latency
+Authors: Clark Williams
+
+This one has the potential to be our deepest technical dive into kernel
+implementation details, as they will support why these various things
+are issues in the first place.  Also some system architecture details
+will come out here I suspect.
+
+o paging (mlock, mlockall)
+ - how do we get more fine grained here?
+o cache misses, tlb thrashing (hugepages, ?)
+o preemption (careful design, see System Configuration)
+o system load
+  - CPU
+  - I/O
+  - Net
+o SMIs (maybe redundant with System Configuration above)
+o others?
+
+
+Article 6: Benchmarking
+Authors: Luis, Darren 
+
+i.e. how to characterize your system's real-time abilities
+o Paradigm Shift
+  - looking at worst case and std deviation rather than averages
+o Statistical Analysis
+  - how to interpret the data with en eye toward determinism
+  - histograms
+  - percentiles
+  - std deviation
+  - error plots (forgot the name...)
+  - other? confidence intervals, quantiles, ... my stats is a little 
+    rusty
+o What to test
+  - pick some examples from LTP/realtime
+
+Article 8:. Troubleshooting
+Authors: Rostedt, Ankita ?
+o kdump/crash
+o ftrace
+o latency_tracer?
