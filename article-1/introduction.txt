@@ -1,18 +1,26 @@
     Title: Real-Time Linux Best Practices: Introduction and System Configuration
   Authors: Darren Hart <dvhltc@us.ibm.com>
 Reviewers: JV <jvrao@us.ibm.com>
+           Ankita Garg
+           Clark Williams
+           Paul McKenney
+
 
 
 Introduction
 ============
 While real-time systems are by no means a new phenomenon, a new class of real-time systems has grown from the increasing demands modern workloads are placing on their underlying operating system (OS) for fast response times, deterministic behavior, and additional control of what runs when.  These workloads are not limited to the relatively small control systems typically supported by proprietary embedded real-time operating systems (RTOS), but rather Enterprise class workloads involving thousands of execution contexts, advanced interprocess communication and synchronization, networking and messaging stacks, SAN storage, and parallel computing.  These heavy-weight requirements draw the line between the traditional RTOS and Enterprise Real-Time Linux.
 
-To meet these demands, developers from companies like IBM, Red Hat, and Novell have worked to productize the existing real-time support in the Linux kernel and to incorporate the PREEMPT_RT patchset of Ingo Molnar.  With products like Red Hat's MRG and Novell's SLERT now available to the masses, there exists a need to revisit and expand the traditional real-time system configuration and application development practices.
+To meet these demands, developers from companies like IBM [0], Red Hat, and Novell have worked to productize the existing real-time support in the Linux kernel and to incorporate the PREEMPT_RT [1] patchset of Ingo Molnar.  With products like Red Hat's MRG [2] and Novell's SLERT [3] now available to the masses, there exists a need to revisit and expand the traditional real-time system configuration and application development practices.
 
-This article is the first of a series of articles that will outline a set of best practices for the initial configuration and tuning of a modern Enterprise Real-Time Linux system and the development of enterprise real-time applications.  Like those written for a traditional RTOS, Real-Time Linux applications must be designed with a solid understanding of their target system.  Parameters such as interrupt handler priority and CPU affinity must be taken into account.  While programming these applications is done in conformance to POSIX standards, there are several less-than-obvious pitfalls that this series will attempt to address, citing kernel implementation details as justification.  With these articles as a guide, the reader will have the information they need to properly configure their OS and select the appropriate mechanisms to achieve their application design goals with a minimal amount of frustration.
+This article is the first of a series of articles that will outline a set of best practices for the initial configuration and tuning of a modern Enterprise Real-Time Linux system and the development of enterprise real-time applications.  Like those written for a traditional RTOS, Real-Time Linux applications must be designed with a solid understanding of their target system.  Setting up appropriate priorities and CPU affinities for all the application and kernel threads must be taken into account. While programming these applications is done in conformance to POSIX standards, there are several less-than-obvious pitfalls that this series will attempt to address, citing kernel implementation details as justification.  With these articles as a guide, the reader will have the information they need to properly configure their OS and select the appropriate mechanisms to achieve their application design goals with a minimal amount of frustration.
 
 This article will kick off the series with a discussion of the initial setup, configuration, and tuning of an Enterprise Real-Time OS.  While differences exist in the details between vendors, these articles will keep to the general principle as much as possible, citing vendor specific tools and processes only when necessary to ensure a clear understanding of the situation.
 
+System Installation
+===================
+A real-time Linux installation basically consists of a base distribution with the addition of the real-time kernel, possibly an updated glibc, and some configuration scripts.  Recent distributions such as Red Hat Enterprise Linux 5, SUSE Linux Enterprise 10, and Ubuntu 8.10 all have a sufficiently recent C library.  Distribution specific installation instructions can be found at the MRG Realtime deployment webpage [4] and Novell's evaluation page [5]. 
+FIXME: mention Ubuntu?  they don't seem to have an intrepid wiki page (only gutsy and hardy) and they appear to have disabled SMP!??).
 
 System Configuration
 ====================
@@ -28,7 +36,7 @@ real-time priority              (-r) 0
 scheduling priority             (-e) 0
 max locked memory       (kbytes, -l) 32
 
-Recent versions of PAM (FIXME: check required version) allow for these limits to be adjusted on a per user or group basis via the security limits configuration files, LIMITS.CONF(5) [1].  A common approach is to create a "realtime" group and bless it with various privileges associated with running real-time applications.
+Recent versions of PAM (FIXME: check required version) allow for these limits to be adjusted on a per user or group basis via the security limits configuration files, LIMITS.CONF(5) [10].  A common approach is to create a "realtime" group and bless it with various privileges associated with running real-time applications.
 
 @realtime        -       rtprio          100
 @realtime        -       nice            -20
@@ -41,12 +49,12 @@ real-time priority              (-r) 100
 scheduling priority             (-e) 39
 max locked memory       (kbytes, -l) unlimited
 
-With these settings, users in the "realtime" group can use the POSIX scheduler API for setting the SCHED_FIFO and SCHED_RR scheduling policies with any of the 99 priorities, as well lock an unlimited amount of memory to prevent unwanted paging.  These APIs and their use in practice will be discussed in greater in a subsequent article.
+With these settings, users in the "realtime" group can use the POSIX scheduler API for setting the SCHED_FIFO and SCHED_RR scheduling policies with any of the 99 priorities, as well as lock an unlimited amount of memory to prevent unwanted paging.  These APIs and their use in practice will be discussed in greater in subsequent articles.
 
 
 Prioritizing System Threads
 ---------------------------
-One of the core features of the real-time Linux kernel is threaded interrupt handlers and finer grained soft-irq [2] threads.  This allows for these system threads to be carefully prioritized in order to maximize serviceability of those devices critical to a system's design criteria while minimizing preemptions and latencies from those of secondary importance.  The kernel sets most of these threads to priority 50 at boot.  A quick scan with "ps" will provide a list of these system threads.
+One of the core features of the real-time Linux kernel is threaded interrupt handlers and finer grained soft-irq [20] threads. This allows for these system threads to be carefully prioritized in order to maximize serviceability of those devices critical to a system's design criteria while minimizing preemptions and latencies from those of secondary importance. Running as individual tasks, interrupts handlers are not only able to be prioritized, they can also be preempted by higher priority tasks. Without these enhancements, interrupt handlers would run without regards to any sense of relative priority, and for as long as they wanted, without regard to the impact on the rest of the system; effectively eliminating any guarantees regarding deterministic response time.  The kernel sets most of these threads to priority 50 at boot.  A quick scan with "ps" will provide a list of these system threads.
 
 $ ps -eLo pid,rtprio,policy,comm | egrep "PID|FF"
   PID RTPRIO POL COMMAND
@@ -77,9 +85,13 @@ $ ps -eLo pid,rtprio,policy,comm | egrep "PID|FF"
  2209     50 FF  IRQ-17
  2801     50 FF  IRQ-4
 
-Note: Per-CPU threads are designated with a /# suffix (where # is the CPU it's running on).  There will be one instance of thread running on every CPU.
+Note: Per-CPU threads are designated with a /# suffix (where # is the CPU it's running on).  There will be one instance of each thread running on every CPU.
 
-If, for example, the design requires a timely response to an event sent via an interrupt from a specific device, the priority of that device's interrupt handler can be set relatively high in comparison with the application itself, as well as the interrupt handlers of less critical hardware (possibly networking and block devices).  This can be accomplished in a number of ways.  While experimenting to find the best priority settings, the user can simply use the "chrt" command to adjust priorities at runtime.  Once the final set of priorities has been determined, they can be saved off in a configuration file [3] to be consulted at each boot.
+If, for example, the design requires a timely response to an event sent via an interrupt from a specific device, the priority of that device's interrupt handler can be set relatively high in comparison with the application itself, as well as the interrupt handlers of less critical hardware (possibly networking and block devices).  This can be accomplished in a number of ways.  While experimenting to find the best priority settings, the user can simply use the CHRT(1) command to adjust priorities at runtime.  The following commands will change sirq-net-tx to priority 75 (and maintain the SCHED_FIFO policy):
+
+# chrt -f -p 75 7
+
+Once the final set of priorities has been determined, they can be saved off in a configuration file [30] to be consulted at each boot.
 
 An example MRG rtgroups file looks like this:
 
@@ -129,15 +141,13 @@ And at boot, the system threads priorities are:
  2209     85 FF  IRQ-17
  2801     85 FF  IRQ-4
 
-If you find that simply prioritizing these threads is not sufficient to keep your application from experiencing unwanted latencies, you can look into pinning certain threads (both system and application) to specific CPUs or sets of CPUs using the TASKSET(1) command, and then specifying the affinity in the rtgroups file [4] once you've settled on the final configuration.  CPU pinning can also help reduce the additional scheduling overhead involved with strict real-time priority scheduling as well as provide some relief from adverse cache effects.  CPU pinning (and CPU shielding) will be discussed in more detail in a future article dealing specifically with real-time scheduling and tuning.  Of course, if you aren't using an official real-time Linux distribution, you can always write a simple rc script using "chrt" and "taskset" to make these changes automatic as well.
+If you find that prioritizing these threads is not sufficient to keep your application from experiencing unwanted latencies, you can look into pinning certain threads (both system and application) to specific CPUs or sets of CPUs using the TASKSET(1) command, and then specifying the affinity in the rtgroups file [40] once you've settled on the final configuration.  CPU pinning can also help reduce the additional scheduling overhead involved with strict real-time priority scheduling as well as provide some relief from adverse cache effects.  CPU pinning (and CPU shielding) will be discussed in more detail in a future article dealing specifically with real-time scheduling and tuning.  Of course, if you aren't using an official real-time Linux distribution, you can always write a simple rc script using "chrt" and "taskset" to make these changes automatic as well.
 
-I believe the remainder of my notes here can be left for a paper specifically targetted for tuning...
-  - irq balancer
-  - kernel threads (kswapd, migration threads, etc.)
-  - mention tools like tuna
-  - discuss how interrupts as threads can not only prioritized, but are now also preemptible
-  - look at introducing cset... maybe leave that for the scheduling paper
-  - look at discussing ionice...
+Do use caution when adjusting the priorities and affinities of system threads as you can quite easily lock yourself out of your system or force it into a deadlock situation.  Consider access over ssh for example. If you have an application thread that runs at a higher priority than any of the ssh daemon, the sirq-net-* threads, or the interrupt thread (INT-X where X is the interrupt of your network card), your application can potentially enter a CPU intensive routine and prevent your shell from responding, or new connection from being made.
+
+The astute reader may notice a couple priority 99 threads on each CPU, including "migration", "posixcputmr", and "watchdog".  These threads are critical to some core real-time services like scheduling and timers.  You may also notice a priority 1 threads, such as "sirq-sched", "events", and "krcupreemptd".  These are mostly housekeeping and accounting threads.  It is good programming practice to restrict your application to the priority range of 2-98 to avoid being preempted by housekeeping threads and interfering with critical system services (indeed most applications would do well to restrict themselves to a much narrower priority windows).  Finally, there are a number of SCHED_OTHER kernel threads related to block i/o, swap, logs, journals, etc.  In general, a latency sensitive real-time application should not require the services provided by these threads, but you should be aware of them should you find your application blocked on services such as these.
+
+While the various command-line tools discussed above are sufficient to experiment with and setup your system, the job can get tedious given the number of system threads, which grows quickly with additional CPUs.  Graphical tools such as "tuna" [80] can help organize the relevant information and speed the process.
 
 
 Hardware Considerations
@@ -151,22 +161,31 @@ Many system BIOSs include power management options to control features such as h
 
 Servicability
 -------------
-Servicability often becomes an issues for people developing real-time applications, especially for the first time.  It is fairly easy to misprioritize your applications, or the sytem threads, and send your machine into an uninterruptible busy loop.  Without some precautions, the only way out of this is a hard shutdown.
+Servicability often becomes an issues for people developing real-time applications, especially for the first time.  It is fairly easy to mis-prioritize your applications, or the system threads, and send your machine into an uninterruptible busy loop.  Without some precautions, the only way out of this is a hard shutdown.
 
 In a development environment it can be helpful to run an ssh daemon and the network IRQ thread and sirq-net-* threads at an elevated priority (somewhere around 95), and ensure none of your application threads exceed that.  Should your application begin to spin, you can use this high priority ssh daemon to log into the machine and kill the offending processes without having to power off your system.  Note this approach should not be used in a production environment or on any public network as it poses a risk for a Denial of Service attack (DOS) - at real-time priority no less!
 
-Another option is to run something like the rtwatchdog daemon [5], which uses a SCHED_FIFO 99 thread (the watchdog) to check the progress of a SCHED_OTHER thread (the canary).  If the canary fails to chirp within a specified threshold, the rtwatchdog will take action.  You can select from a set of predefined actions, or specify an external command for the watchdog to run.  Typical actions include killing runaway real-time processes or rebooting the machine (nicely).  Your own actions can be made much more targetted in order to deal with your specific needs.
+Another option is to run something like the rtwatchdog daemon [50], which uses a SCHED_FIFO 99 thread (the watchdog) to check the progress of a SCHED_OTHER thread (the canary).  If the canary fails to chirp within a specified threshold, the rtwatchdog will take action.  You can select from a set of predefined actions, or specify an external command for the watchdog to run.  Typical actions include killing runaway real-time processes or rebooting the machine (nicely).  Your own actions can be made much more targeted in order to deal with your specific needs.
 
-If you find your system hanging or crashing repeatedly and can't account for it with your application, a kernel core dump can be helpful in diagnosing potential kernel bugs.  Kdump can be configured to dump memory to disk at panic or via the SysRq interface.  Crash is then used to analyze this core.
+If you find your system hanging or crashing repeatedly and can't account for it with your application, a kernel core dump can be helpful in diagnosing potential kernel bugs.  Kdump [60] can be configured to dump memory to disk at panic or via the SysRq interface.  Crash [70] is then used to analyze this core.
 
 
 What's Next
 -----------
-In our next installment, we'll take a closer look at Real-Time scheduling, including typical scheduling tasks such as perioding scheduling as well as common pitfalls to avoid.
+In our next instalment, we'll take a closer look at Real-Time scheduling, including typical scheduling tasks such as periodic scheduling as well as common pitfalls to avoid.
 
 
-[1] Red Hat MRG sets these in the limits.d/realtime.conf file while Novell SLERT uses the limits.conf file.  The syntax for each is the same.
-[2] Depending on your kernel version, soft irqs will appear in ps as softirq-* or sirq-*.
-[3] Red Hat MRG uses /etc/rtgroups while Novell SLERT uses /etc/set_kthread_prio.conf (from the ibmrtpkgs package)
-[4] Note that set_kthread_prio.conf doesn't allow for cpu pinning (FIXME: Novell to confirm proper method)
-[5] rtwatchdog is included as its own package in MRG and as part of the ibmrtpkgs pacakge on SLERT
+[0] http://www-03.ibm.com/linux/realtime.html
+[1] Download PREEMPT_RT releases from http://rt.et.redhat.com/download/ or start working with the new git repository from git://git.kernel.org/pub/scm/linux/kernel/git/rostedt/linux-2.6-rt.git
+[2] Red Hat MRG website http://www.redhat.com/mrg/
+[3] Novel SLERT website http://www.novell.com/products/realtime/
+[4] http://www.redhat.com/docs/en-US/Red_Hat_Enterprise_MRG/1.0/html/Real_Time_Deployment_Guide/
+[5] http://www.novell.com/products/realtime/eval.html
+[10] Red Hat MRG sets these in the limits.d/realtime.conf file while Novell SLERT uses the limits.conf file.  The syntax for each is the same.
+[20] Depending on your kernel version, soft irqs will appear in ps as softirq-* or sirq-*.
+[30] Red Hat MRG uses /etc/rtgroups while Novell SLERT uses /etc/set_kthread_prio.conf (from the ibmrtpkgs package)
+[40] Note that set_kthread_prio.conf doesn't allow for cpu pinning (FIXME: Novell to confirm proper method)
+[50] rtwatchdog is included as its own package in MRG and as part of the ibmrtpkgs pacakge on SLERT
+[60] http://lse.sourceforge.net/kdump/
+[70] http://people.redhat.com/anderson/crash_whitepaper/
+[80] http://www.osadl.org/Single-View.111+M5d6d15531f8.0.html
