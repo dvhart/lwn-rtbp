@@ -9,7 +9,7 @@ Reviewers: JV <jvrao@us.ibm.com>
 
 Introduction
 ============
-While real-time systems are by no means a new phenomenon, a new class of real-time systems has grown from the increasing demands modern workloads are placing on their underlying operating system (OS) for fast response times, deterministic behavior, and additional control of what runs when.  These workloads are not limited to the relatively small control systems typically supported by proprietary embedded real-time operating systems (RTOS), but rather Enterprise class workloads involving thousands of execution contexts, advanced interprocess communication and synchronization, networking and messaging stacks, SAN storage, and parallel computing.  These heavy-weight requirements draw the line between the traditional RTOS and Enterprise Real-Time Linux.
+While real-time systems are by no means a new phenomenon, a new class of real-time systems has grown from the increasing demands modern workloads are placing on their underlying operating system (OS) for fast response times, deterministic behavior, and additional control of what runs when.  These workloads are not limited to the relatively small control systems typically supported by proprietary embedded real-time operating systems (RTOS), but rather Enterprise class workloads involving thousands of execution contexts, advanced interprocess communication and synchronization, networking and messaging stacks, SAN storage, and parallel computing.  The advent of multicore CPUs, which have found their way into even the most basic consumer-level computing hardware, has made it necessary for a modern RTOS to support large SMP systems.  These heavy-weight requirements draw the line between the traditional RTOS and Enterprise Real-Time Linux.
 
 To meet these demands, developers from companies like IBM [0], Red Hat, and Novell have worked to productize the existing real-time support in the Linux kernel and to incorporate the PREEMPT_RT [1] patchset of Ingo Molnar.  With products like Red Hat's MRG [2] and Novell's SLERT [3] now available to the masses, there exists a need to revisit and expand the traditional real-time system configuration and application development practices.
 
@@ -49,8 +49,9 @@ real-time priority              (-r) 100
 scheduling priority             (-e) 39
 max locked memory       (kbytes, -l) unlimited
 
-With these settings, users in the "realtime" group can use the POSIX scheduler API for setting the SCHED_FIFO and SCHED_RR scheduling policies with any of the 99 priorities, as well as lock an unlimited amount of memory to prevent unwanted paging.  These APIs and their use in practice will be discussed in greater in subsequent articles.
+With these settings, users in the "realtime" group can use the POSIX scheduler API for setting the SCHED_FIFO and SCHED_RR scheduling policies with any of the 99 priorities, as well as lock an unlimited amount of memory to prevent unwanted paging. These priveleges should be granted judiciously as they come with certain risks. The use of real-time priorities allows the user to preempt and starve out other processes, including critical kernel services. The ability to lock unlimited amounts of memory increases the risk of invoking the OOM Killer should your system be configured to overcommit memory.  While certain basic precautions are taken by the OOM Killer, one should assume that if it starts running, the system can not be trusted to meet any of its design criteria.  Most systems today default to allowing overcommit.  This is fine so long as the system is well designed and adequately provisioned.  However, it is not a bad idea to disable overcommit and limit the size of the total virtual address space, especially during development.  This will cause hard failures at the time of allocation, and provide application developers with the exact details of when they would have otherwise overcommitted the system and been at risk of invoking the OOM Killer.  The system overcommit settings are controlled via the proc files "/proc/sys/vm/overcommit_memory" and "/proc/sys/vm/overcommit_ratio".  Their use is well documented in PROC(5).
 
+Great care should be excercised when writing applications using real-time priorities as well as locking large amounts of memory. These APIs and their use in practice will be discussed in greater detail in subsequent articles.
 
 Prioritizing System Threads
 ---------------------------
@@ -107,7 +108,7 @@ lockd:f:80:*:\[lockd.*\]
 nfsd:f:80:*:\[nfsd.*\]
 hardirq:f:85:*:\[IRQ[\-_].*\]
 
-And at boot, the system threads priorities are:
+Given the above rtgroups file, the system thread priorities will be set as follows at boot:
 
   PID RTPRIO POL COMMAND
     3     99 FF  migration/0
@@ -154,18 +155,22 @@ Hardware Considerations
 -----------------------
 In addition to carefully prioritizing interrupt handlers and system threads to reduce latencies to your real-time application, care should be taken in selecting your target hardware platform.  Both System Management Interrupts (SMIs) and power management settings can have an adverse effect on latencies.
 
-SMIs are used on many platforms to handle several types of hardware health checks and system diagnostics.  When an SMI is issued, the OS is delayed while system service routines run on the CPU.  These are not able to be prioritized and can occur at any time.  Unless the hardware manufacturer has provided a supported means to suppress SMIs, it is generally not a good idea to do so as it could lead to physical damage to your system.
+SMIs are used on many platforms to handle several types of hardware health checks and system diagnostics.  When an SMI is issued, the OS is delayed while system service routines run on the CPU.  These are not able to be prioritized or preempted, and can occur at any time. Although it is sometimes possible to configure the system to suppress SMIs, please note that doing so could lead to system failures or even physical damage, unless of course such suppression is explicitly supported by your hardware manufacturer.
 
-Many system BIOSs include power management options to control features such as hard-drive spin down, CPU sleep states, and CPU frequency scaling.  These options can have a significant impact on latencies, and may need to be disabled in order to meet certain latency requirements.
+Many system BIOSs include power management options to control features such as hard-drive spin down, CPU sleep states, and CPU frequency scaling.  These options can have a significant impact on latencies, and may need to be disabled in order to meet aggressive latency requirements.
 
 
-Servicability
+Serviceability
 -------------
-Servicability often becomes an issues for people developing real-time applications, especially for the first time.  It is fairly easy to mis-prioritize your applications, or the system threads, and send your machine into an uninterruptible busy loop.  Without some precautions, the only way out of this is a hard shutdown.
+Serviceability can  be an issue for people developing real-time applications, especially for the first time.  It is fairly easy to mis-prioritize your applications, or the system threads, and send your machine into an uninterruptible busy loop.  Without some precautions, the only way out of this is a hard shutdown.
 
 In a development environment it can be helpful to run an ssh daemon and the network IRQ thread and sirq-net-* threads at an elevated priority (somewhere around 95), and ensure none of your application threads exceed that.  Should your application begin to spin, you can use this high priority ssh daemon to log into the machine and kill the offending processes without having to power off your system.  Note this approach should not be used in a production environment or on any public network as it poses a risk for a Denial of Service attack (DOS) - at real-time priority no less!
 
+FIXME: sshd howto (or link)
+
 Another option is to run something like the rtwatchdog daemon [50], which uses a SCHED_FIFO 99 thread (the watchdog) to check the progress of a SCHED_OTHER thread (the canary).  If the canary fails to chirp within a specified threshold, the rtwatchdog will take action.  You can select from a set of predefined actions, or specify an external command for the watchdog to run.  Typical actions include killing runaway real-time processes or rebooting the machine (nicely).  Your own actions can be made much more targeted in order to deal with your specific needs.
+
+FIXME: rtwatchdog howto (or link)
 
 If you find your system hanging or crashing repeatedly and can't account for it with your application, a kernel core dump can be helpful in diagnosing potential kernel bugs.  Kdump [60] can be configured to dump memory to disk at panic or via the SysRq interface.  Crash [70] is then used to analyze this core.
 
