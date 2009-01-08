@@ -29,7 +29,7 @@ As with any system, real-time systems must be configured to prevent accidental (
 
 Configuring Real-Time Privileges
 --------------------------------
-By default, Linux restricts the use several mechanisms critical to the implementation of a real-time system.  These include user limits governing the use of the POSIX scheduling interfaces as well as maximum locked memory size, and others.  Typically, even the root user has limits imposed.  A new user will typically see limits such as the following:
+By default, Linux restricts the use several mechanisms critical to the implementation of a real-time system.  These include user limits governing the use of the POSIX scheduling interfaces as well as maximum locked memory size, and others.  Typically, even the root user has limits imposed.  A new user will typically see limits such as the following [6]:
 
 $ ulimit -r -e -l
 real-time priority              (-r) 0
@@ -186,6 +186,7 @@ In our next instalment, we'll take a closer look at Real-Time scheduling, includ
 [3] Novel SLERT website http://www.novell.com/products/realtime/
 [4] http://www.redhat.com/docs/en-US/Red_Hat_Enterprise_MRG/1.0/html/Real_Time_Deployment_Guide/
 [5] http://www.novell.com/products/realtime/eval.html
+[6] Depending on your installation, ulimit may not support the -r and -e options.  If not, you will have to rely on running nice and chrt and checking for Permission Denied errors.
 [10] Red Hat MRG sets these in the limits.d/realtime.conf file while Novell SLERT uses the limits.conf file.  The syntax for each is the same.
 [20] Depending on your kernel version, soft irqs will appear in ps as softirq-* or sirq-*.
 [30] Red Hat MRG uses /etc/rtgroups while Novell SLERT uses /etc/set_kthread_prio.conf (from the ibmrtpkgs package)
