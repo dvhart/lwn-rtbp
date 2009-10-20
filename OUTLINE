@@ -1,24 +1,32 @@
 OUTLINE
 -------
 
-Article 1: Getting Started with Enterprise Real-Time Linux
+Article 1: An Introduction to Enterprise Real-Time Linux
 Authors: Darren Hart
-
-I am a little concerned that this first article is too dull, maybe we
-don't need it at all?  Perhaps we can include a technical howto on
-something very core to any rt programming - rt scheduling?
-
 o Introduction (minimal length, just state what were doing)
   - Enterprise Real-Time definition
     - examples of how it's being used today
-    - When do you need it (brief summary w/ references)
   - Where can you get it
+o History of Real-Time support under Linux
+o When do you need it (brief summary w/ references)
+  - When isn't vanilla Linux sufficient
+  - What are the costs
+o What can you accomplish with Enterprise Real-Time Linux
 o Scope definition
   - C, C++, not Java
   - Focus on SMP servers, rather than embedded platforms
 o Standards
   - Relevant POSIX standards
   - Linux PREEMPT_RT specific features, or implementation details
+
+
+Article 2: Getting Started with Enterprise Real-Time Linux
+Authors: Darren Hart
+
+I am a little concerned that this first article is too dull, maybe we
+don't need it at all?  Perhaps we can include a technical howto on
+something very core to any rt programming - rt scheduling?
+
 o System Configuration
   - PAM, ulimits (limits.conf, realtime.conf, etc.)
   - kthread/softirq priorities
@@ -31,18 +39,6 @@ o System Configuration
     - oprofile
 
 
-Article 2: Time and timers
-Authors: John Stultz
-
-o clock sources and clock events (understanding your hardware)
-  - Using the clock_gettime() interface (responsibly)
-    - CLOCK_MONOTONIC (not CLOCK_REALTIME... oddly enough)
-    - why not gettimeofday()
-  - clock_nanosleep()
-  - itimers
-  (these last two overlap with scheduling a bit...)
-
-
 Article 3: Real-Time Scheduling
 Authors: Darren Hart, JV
 
@@ -51,7 +47,7 @@ o Overview
     - internals (behavior, sched_yield, queues)
     - why SCHED_RR isn't really a good idea...
   - Choosing your priorities
-﻿  - using prctl to be able to distinguish your threads from one another
+  - using prctl to be able to distinguish your threads from one another
 o Setting Priorities
   - via chrt
   - programatically
@@ -65,7 +61,19 @@ o Leveraging CPU Pinning
   - pros/cons
    
 
-Article 4: Threading and IPC
+Article 4: Time and timers
+Authors: John Stultz
+
+o clock sources and clock events (understanding your hardware)
+  - Using the clock_gettime() interface (responsibly)
+    - CLOCK_MONOTONIC (not CLOCK_REALTIME... oddly enough)
+    - why not gettimeofday()
+  - clock_nanosleep()
+  - itimers
+  (these last two overlap with scheduling a bit...)
+
+
+Article 5: Threading and IPC
 Authors: Sripathi
 o unix signals (why not to)
 o Locking
@@ -81,7 +89,7 @@ o Barriers
 o POSIX message queues
 
 
-Article 5: Minimizing Latency
+Article 6: Minimizing Latency
 Authors: Clark Williams
 
 This one has the potential to be our deepest technical dive into kernel
@@ -101,7 +109,7 @@ o SMIs (maybe redundant with System Configuration above)
 o others?
 
 
-Article 6: Benchmarking
+Article 7: Benchmarking
 Authors: Luis, Darren 
 
 i.e. how to characterize your system's real-time abilities
