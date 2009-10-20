@@ -3,94 +3,223 @@ Authors:
 Venkateswararao Jujjuri
 Darren Hart
 
+Reviewers: 
+Ankita Garg.
+
 Overview:
 
-The basic job of a Linux scheduler is to share all the available CPUs among the processes by switching from one process to other in a very short time frame. This action achieves the effect of an apparent simultaneous execution of multiple processes.
+The basic job of a Linux scheduler is to share all the available CPUs among
+runnable processes. Each processor is shared among multiple runnable processes
+by switching from one process to other in a very short time frame. This action
+achieves the effect of an apparent simultaneous execution of multiple
+processes.
 
-The Linux Scheduler decides which runnable process will be executed by a CPU next and is often needed to achieve several conflicting objectives like fast process response time, good throughput etc. The picture becomes more complex when it comes to the real-time.
+The Linux Scheduler decides which runnable process will be executed by a CPU
+next and is often needed to achieve several conflicting objectives like fast
+process response time, good throughput etc. The picture becomes more complex
+when it comes to Real-Time operating systems.
 
-Determinism is the mantra in Real-Time world. Real-Time systems provide more control to users in choosing what gets run when. With proper privileges, users can specify the priority and scheduling policy of not only the user level application threads, but also the critical system service threads, like hard and soft interrupt handlers. With this power, comes great responsibility! It is very easy to miss-configure a real-time system and render it unresponsive.
+Determinism is the mantra in Real-Time world. Real-Time systems provide more
+control to users in choosing what gets run when. With proper privileges, users
+can specify the priority and scheduling policy of not only the user level
+application threads, but also the critical system service threads, like hard
+and soft interrupt handlers. With this power, comes great responsibility! It
+is very easy to miss-configure a Real-Time system and render it unresponsive.
 
-Starting with a brief dip into the Linux Real-Time internals, the rest of this article presents the scheduler from the user's paradigm.
+Starting with a brief dip into the Linux Real-Time scheduler internals, the
+rest of this article presents the scheduler from the user's paradigm.
 
 Behind the scenes: 
 
-The Linux Real-Time scheduler schedules on basis of a system wide strict real-time-priority policy. The system wide nature of the scheduler makes it to consider all the available CPUs to schedule any of the runnable processes on the system. The strict real-time priority makes sure that at any given point, NR_CPU (# of online CPUs) number of top priority processes will be running on the system. Hence on a Real-Time machine, there shall never be a situation where a high priority process is idling because of a lower priority process is running. Because of this global scope of the Linux Real-Time Scheduler, please be noted that there can be a situation where processes are bounce among the available CPUs causing cache thrashing resulting in performance degradation. To minimize this kind of performance degradation, the scheduler is designed to take the CPU cache affinity into account as a second priority (scheduling being the top priority). This additional precaution allows the scheduler to take advantage of the CPU cache affinity when it is not costing the priority scheduling.
+Real-Time systems require that tasks be executed in a strict priority  order.
+This necessitates the Linux Real-Time scheduler to schedule on basis of a
+system wide strict real-time-priority policy. The system wide nature of the
+scheduler makes it to consider all the available CPUs to schedule any of the
+runnable processes on the system. This strict Real-Time priority makes sure
+that at any given point, NR_CPU (# of online CPUs) number of top priority
+processes will be running on the system. Hence on a Real-Time machine, there
+shall never be a situation where a high priority process is idling because of
+a lower priority process is running. Because of this global scope of the Linux
+Real-Time Scheduler, please be noted that there can be a situation where
+processes are bounce among the available CPUs causing cache thrashing
+resulting in performance degradation. To minimize this kind of performance
+degradation, the scheduler is designed to take the CPU cache affinity into
+account as a second priority (strict priority scheduling being the top
+priority). This additional precaution allows the scheduler to take advantage
+of the CPU cache affinity when it is not costing the priority scheduling.
 
-Conceptually, the scheduler maintains a list of runnable processes for each possible static priority (sched_priority) value. The Real-Time processes can have a priority in the range 1 to 99(MAX_RT_PRIO-1, 99 being the highest priority) and can choose between two scheduler policies, SCHED_FIFO and SCHED_RR. If the process needs to run under conventional scheduling policy, it needs to be set to SCHED_OTHER(the default policy).
-In order to determine the process that runs next, the Linux Real-Time scheduler looks for  the  non-empty  list  with  the  highest static  priority  and  takes  the process at the head of this list. The scheduling policy determines for each process, where it will be inserted into the list of processes with equal static priority and how it will move inside this list.
+Conceptually, the scheduler maintains a list of runnable processes for each
+possible static priority (sched_priority) value. The Real-Time processes can
+have a priority in the range 1 to 99(MAX_RT_PRIO-1, 99 being the highest
+priority) and can choose between two scheduler policies, SCHED_FIFO and
+SCHED_RR. If the process needs to run under conventional scheduling policy, it
+needs to be set to SCHED_OTHER(the default policy).
+In order to determine the process that runs next, the Linux Real-Time
+scheduler looks for  the  non-empty  list  with  the  highest static  priority
+and  takes  the process at the head of this list. The scheduling policy
+determines for each process, where it will be inserted into the list of
+processes with equal static priority and how it will move inside this list.
 
 
 SCHED_FIFO
-A First-In, First-Out real-time policy. When a SCHED_FIFO process becomes runnable, it will always immediately preempt any currently running lower priority process. SCHED_FIFO is a simple scheduling algorithm without timeslicing and when the scheduler assigns the CPU to a process, it leaves the process descriptor in its current position in the runqueue list. 
-A SCHED_FIFO process that has been preempted by another process of higher priority will stay at the head of the list for its priority and will resume execution as soon as all processes of the higher priority goes to sleep or blocked again.
+A First-In, First-Out Real-Time scheduling policy. When a SCHED_FIFO process
+becomes runnable, it will always immediately preempt any currently running
+lower priority process. SCHED_FIFO is a simple scheduling algorithm and it does
+not do any kind of processor timeslicing. Generally when the scheduler assigns
+the CPU to a process, it moves that process's process descriptor to the end of
+the queue, but in the case of SCHED_FIFO, the process descriptor will be left
+it its current position. 
 
-As long as no other higher-priority real-time process is runnable, the SCHED_FIFO process will continue to use the CPU until it relinquishes the CPU or goes to sleep, or gets blocked. While the available CPUs of a system are being used by the higher priority SCHED_FIFO processes, all the processes that are at the same or lower priority shall have to wait and may even get starved until the CPUs becomes available, there is no way of preempting the higher priority processes.
+A SCHED_FIFO process that has been preempted by another process of higher
+priority will stay at the head of the list for its priority and will resume
+execution as soon as all processes of the higher priority goes to sleep or
+blocked again.
+
+As long as no other higher-priority Real-Time process is runnable, the
+SCHED_FIFO process will continue to use the CPU until it relinquishes the CPU
+or goes to sleep, or gets blocked. While the available CPUs of a system are
+being used by the higher priority SCHED_FIFO processes, all the processes that
+are at the same or lower priority shall have to wait and may even get starved
+until the CPUs becomes available, there is no way of preempting the higher
+priority processes.
 
 SCHED_RR
-The Round Robin real-time policy is a simple variation of the SCHED_FIFO policy.  Everything described above for SCHED_FIFO also applies to SCHED_RR except that each process is only allowed to run for a maximum time slice. When the scheduler assigns the CPU to the process, it puts the process descriptor at the end of its priority runqueue. This policy ensures a fair assignment of CPU time to all SCHED_RR real-time processes that have the same priority. But, all the processes at the lower priority will have to wait and may get starved until the CPU becomes available.
+The Round Robin Real-Time policy is a simple variation of the SCHED_FIFO
+policy.  Everything described above for SCHED_FIFO also applies to SCHED_RR
+except that each process is only allowed to run for a maximum time slice. When
+the scheduler assigns the CPU to the process, it puts the process descriptor
+at the end of its priority runqueue. This policy ensures a fair assignment of
+CPU time to all SCHED_RR Real-Time processes that have the same priority. But,
+all the processes at the lower priority will have to wait and may get starved
+until the CPU becomes available.
 
 
 Brief overview of the Linux Real-Time Scheduling Algorithm
 
-The Linux Real-Time scheduler uses push pull mechanism to organize the runques at the system(global) level.  This global monitoring is required to make sure that the NR_CPUs are occupied with runnable highest priority threads at any given point in time. 
+The Linux Real-Time scheduler uses push-pull mechanism to distribute tasks
+among different runqueues at the system(global) level.  This global monitoring
+is required to make sure that the NR_CPUs are occupied with runnable highest
+priority threads at any given point in time. 
 
-When any process becomes runnable, the Real-Time scheduler uses one of the push/pull techniques to run or to move the task to an appropriate queue on the appropriate CPU. For example, if a higher priority process preempts the lower priority task on a CPU, the scheduler uses push_rt_task() to push the lower priority preempted task to other CPU that is more appropriate (where it can quickly brought back on to the CPU). On the other hand, if a higher priority process running on a CPU relinquishes the CPU, and if the next available process on that CPU?s runqueue is at lower priority than the one just running, the Real-Time scheduler uses pull_rt_task() to check/pull more appropriate process from the other CPU runqueues. 
+When any process becomes runnable, the Real-Time scheduler uses one of the
+push/pull techniques to run or to move the task to an appropriate queue on the
+appropriate CPU. For example, if a higher priority process preempts the lower
+priority task on a CPU, the scheduler uses push_rt_task() to push the
+preempted lower priority task to other CPU that is more appropriate (where it
+can be quickly brought back on to the CPU). On the other hand, if a higher
+priority process running on a CPU relinquishes the CPU, and if the next
+available process on that CPU's runqueue is at lower priority than the one
+just gave-up the CPU, the Real-Time scheduler uses pull_rt_task() to check for
+and pull other more appropriate process from the other CPU runqueues. 
 
 SCHED_FIFO or SCHED_RR which one to choose?
 
-While both of them are Real-Time scheduling policies and have similar characteristics they do have some minor differences.
+While both of them are Real-Time scheduling policies and have similar
+characteristics they do have some minor differences in terms of fairness.
 
-Process running with SCHED_RR gets the default time slice (100 msecs) and is allowed to run until it gets exhausted. As soon as the time slice expires, the current running process is put back at the end of its priority queue. Then the scheduler goes through its logic of selecting the highest priority process checks. In the case of SCHED_FIFO, there is no timeslice attached to the process. Hence an equal priority process may get starved in the case of SCHED_FIFO but will get its fair-share under SCHED_RR.
+As noted earlier, SCHED_RR processes gets the default time slice (100 msecs)
+and are allowed to run only until it gets exhausted. As soon as the time slice
+expires, the current running process is put back at the end of its priority
+queue and the scheduler goes through its logic of selecting the highest
+priority process. Where as, in the case of SCHED_FIFO there is no timeslice
+attached to the process, so the current running process can make other
+processes at the same or lower priority to wait forever.  
 
-Under the Real-Time scheduling policies, a malicious/malfunctioning process at the highest priority can take the full control of the CPU, making the system useless. To overcome this problem, and to balance CPU usage between competing groups of processes, a concept of group scheduling is introduced in 2.6.25 kernel. The group scheduler allocates Real-Time bandwidth to each process group. Once a SCHED_FIFO task causes a group to exceed its rt-bandwidth, it will be pushed out of the processor. This feature is useful if the user wanted to split the system resources among multiple realtime applications. By default, the entire system comes under a single pool called default group and sets the sysctl_sched_rt_runtime value to 950000. That means, for the default group CPU can be dedicated for 0.95 out of every 1.0 seconds. In other words, if the group scheduler is configured, by default, we reserve 5% of the CPU for non-realtime tasks.
-With this, the administrator can have an opportunity to recover the system from the jaws of a malfunctioning higher priority process.
+Hence, if scheduling fairness is desired among equal priority processes,
+SCHED_RR 
+should be policy of choice as otherwise SCHED_FIFO.
+
+Currently, under the Real-Time scheduling policies, a malicious/malfunctioning
+process at the highest priority can take the full control of the CPU, making
+the system useless. To overcome this problem, and to balance CPU usage between
+competing groups of processes, a concept of group scheduling is introduced in
+2.6.25 kernel. The group scheduler allocates Real-Time bandwidth to each
+process group. Once a SCHED_FIFO task causes a group to exceed its
+rt-bandwidth, it will be pushed out of the processor. This feature is useful
+if the user wanted to split the system resources among multiple realtime
+applications. By default, the entire system comes under a single pool called
+default group and sets the sysctl_sched_rt_runtime value to 950000. That
+means, for the default group CPU can be dedicated for 0.95 out of every 1.0
+seconds. In other words, if the group scheduler is configured, by default, we
+reserve 5% of the CPU for non-realtime tasks.
+With this, the administrator can have an opportunity to recover the system
+from the jaws of a malfunctioning higher priority process.
 
 
 System calls Related to Real-Time Sceduling:
 
-The sched_yield() system call
-
-A process can relinquish the processor voluntarily without blocking by calling sched_yield().  The process will then be moved to  he  end  of the queue for its static priority and a new process gets to run.
-
-This call will never yield the processor to lower priority process; at the most it can relinquish the processor to another process at the same priority. Hence if the current process is the only process in the highest priority list at that time, this process will continue to run after a call to sched_yield().
 
 
 The sched_getscheduler() and sched_setscheduler() System Calls
+The sched_setscheduler() and  sched_getscheduler() system calls set and get
+scheduling algorithm/parameters. 
 
-The sched_setscheduler() and  sched_getscheduler() system calls set and get scheduling algorithm/parameters. 
-
-       int sched_setscheduler(pid_t pid, int policy, const struct sched_param *param);
+       int sched_setscheduler(pid_t pid, int policy, const struct sched_param
+*param);
 
        int sched_getscheduler(pid_t pid);
 
-sched_getscheduler() queries the scheduling policy currently applied to the  process  identified  by pid parameter. If the pid is 0, the policy of the calling process will be retrieved. On success the system call returns the policy for the process: SCHED_FIFO, SCHED_RR, or SCHED_OTHER. 
+sched_getscheduler() queries the scheduling policy currently applied to the
+process  identified  by pid parameter. If the pid is 0, the policy of the
+calling process will be retrieved. 
+On success the system call returns the policy for the process: 
+0 for SCHED_OTHERm 1 for SCHED_FIFO, and 2 for SCHED_RR.
 
-The sched_setschduler() system call invokes sys_sched_setscheduler() to set both the scheduling policy and the associated parameters. If the pid is 0, the scheduler parameters of the calling process will be set.
+The sched_setschduler() system call invokes sys_sched_setscheduler() to set
+both the scheduling policy and the associated parameters. If the pid is 0, the
+scheduler parameters of the calling process will be set.
 
-The sys_sched_setscheduler() gets the task_struct through find_process_by_pid() routine, validates the supplied policy and the param->sched_priority before analyzing the privilege of the calling process.
+The sys_sched_setscheduler() gets the task_struct through
+find_process_by_pid() routine, validates the supplied policy and the
+param->sched_priority before analyzing the privilege of the calling process.
 
 Who are privileged to set the priority and the scheduler policy? 
       
-A process can be considered privileged if it has CAP_SYS_NICE capability or whether its owner has superuser rights. 
+A process can be considered privileged if it has CAP_SYS_NICE capability or
+whether its owner has superuser rights. 
 
-The privileged process can change the scheduler policy and also can increase or decrease its priority. But an unprivileged process can only lower its priority, and will not be allowed increase its priority or to change the scheduler policy.
+The privileged process can change the scheduler policy and also can increase
+or decrease its priority. But an unprivileged process can only lower its
+priority, and will not be allowed increase its priority or to change the
+scheduler policy.
 
 The sched_get_priority_min() and sched_get_priority_max() system calls
-The sched_get_priority_max() returns the maximum priority value that can be used    with   the   scheduling   algorithm   identified   by   policy. sched_get_priority_min() returns the minimum priority value that can be used with the scheduling algorithm identified by policy.
+The sched_get_priority_max() returns the maximum priority value that can be
+used    with   the   scheduling   algorithm   identified   by   policy.
+sched_get_priority_min() returns the minimum priority value that can be used
+with the scheduling algorithm identified by policy.
 
 The sched_setparam() and sched_getparam() system calls
 
-sched_setparam()  is kind of a limited functionality sched_setscheduler(). It just sets the scheduling parameters associated with the scheduling policy for the process identified by pid. 
+sched_setparam()  is kind of a limited functionality sched_setscheduler(). It
+just sets the scheduling parameters associated with the scheduling policy for
+the process identified by pid. 
 
-sched_getparam() retrieves the scheduling parameters  for  the  process identified  by  pid. Hence it compliments sched_getscheduler(), which gets only the scheduling policy.
+sched_getparam() retrieves the scheduling parameters  for  the  process
+identified  by  pid. Hence it compliments sched_getscheduler(), which gets
+only the scheduling policy.
 
 The sched_rr_get_interval() system call
-sched_rr_get_interval() gives the round robin time quantum for the process identified by pid. If the pid is zero, the time quantum for the calling process is provided.
+sched_rr_get_interval() gives the round robin time quantum for the process
+identified by pid. If the pid is zero, the time quantum for the calling
+process is provided.
+
+The sched_yield() system call
+
+A process can relinquish the processor voluntarily without blocking by calling
+sched_yield().  The process will then be moved to  he  end  of the queue for
+its static priority and a new process gets to run.
+
+This call will never yield the processor to lower priority process; at the
+most it can relinquish the processor to another process at the same priority.
+Hence if the current process is the only process in the highest priority list
+at that time, this process will continue to run after a call to sched_yield().
+
 
 Setting process scheduling policies and priorities:
 
-A sample example for programmatically setting the scheduling policy and parameters using most of the system calls described above:
+A sample example for programmatically setting the scheduling policy and
+parameters using most of the system calls described above:
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -141,7 +270,8 @@ void print_process_pri(struct sched_param *sp)
 			perror("sched_rr_get_interval");
 			exit(-1);
 		}
-		printf("The process's round robin time quantum is: %d sec %d nsec\n",
+		printf("The process's round robin time quantum is: %d sec %d
+nsec\n",
 			tp.tv_sec, tp.tv_nsec);
 	}
 	printf("\n\n");
@@ -162,7 +292,8 @@ int main()
 
 	sp.sched_priority = maxPri;
 
-	printf("Setting the scheduler policy to SCHED_FIFO and priority to %d\n", maxPri);
+	printf("Setting the scheduler policy to SCHED_FIFO and priority to
+%d\n", maxPri);
 	if (sched_setscheduler(0, SCHED_FIFO, &sp) != 0) {
 		perror("sched_setscheduler");
 		exit(-1);
@@ -178,7 +309,8 @@ int main()
 
 	sp.sched_priority = maxPri;
 
-	printf("Setting the scheduler policy to SCHED_RR and priority to %d\n", maxPri);
+	printf("Setting the scheduler policy to SCHED_RR and priority to
+%d\n", maxPri);
 	if (sched_setscheduler(0, SCHED_RR, &sp) != 0) {
 		perror("sched_setscheduler");
 		exit(-1);
@@ -190,7 +322,8 @@ int main()
 }
 
 
-FIXME: Do we need to repeat this example for pthreads?? All we need to do is use the pid instead of "0" above right? 
+FIXME: Do we need to repeat this example for pthreads?? All we need to do is
+use the pid instead of "0" above right? 
 
 
 
@@ -201,14 +334,25 @@ Using chrt program:
 
 Memory locking:
 
-Selecting proper Real-Time scheduling policy and giving high enough priority are essential steps to achieve realtime behavior for a process, but it may not all be sufficient. Real-Time processes also may take page faults and when this happens the Real-Time process may have to relinquish the CPU to bring the faulted page into the memory. This problem can easily addressed by locking all memory pages into the memory using the mlockall() system call.
-mlockall(MCL_CURRENT | MCL_FUTURE) locks in all the future allocations and all the pages which are currently being mapped into the process's address space.
+Selecting proper Real-Time scheduling policy and giving high enough priority
+are essential steps to achieve realtime behavior for a process, but it may not
+all be sufficient. Real-Time processes also may take page faults and when this
+happens the Real-Time process may have to relinquish the CPU to bring the
+faulted page into the memory. This problem can easily addressed by locking all
+memory pages into the memory using the mlockall() system call.
+mlockall(MCL_CURRENT | MCL_FUTURE) locks in all the future allocations and all
+the pages which are currently being mapped into the process's address space.
 
 CPU pinning:
 
-In addition to fine turning the priority, CPU pinning is another technique one could use to dedicate a CPU for the Real-Time processes. A process can be pinned to a CPU either by using the command 'taskset', or by programmatically using the family of CPU_SET()/CPU_ISSET() macros.
+In addition to fine tuning the priority, CPU pinning is another technique one
+could use to dedicate a CPU for the Real-Time processes. A process can be
+pinned to a CPU either by using the command 'taskset', or by programmatically
+using the family of CPU_SET() and CPU_ISSET() macros.
 
-Using one of these methods one can set or retrieve the CPU affinity of a process. CPU affinity is a scheduler property that bonds (pins) a process to a given set of CPUs on the system. The set may consists of one or more CPUs.
+Using one of these methods one can set or retrieve the CPU affinity of a
+process. CPU affinity is a scheduler property that bonds (pins) a process to a
+given set of CPUs on the system. The set may consists of one or more CPUs.
 
 
 Conclusions:
@@ -218,4 +362,5 @@ o Periodic Scheduling
 ? - with itimers 
 ? - with clock_nanosleep plus delta calculation 
 ? - watch out for aligning periods 
+
 
